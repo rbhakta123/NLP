@@ -311,10 +311,25 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
     # Training parameters
     num_epochs = 10
 
+    # Question 2: Schedule options:
+    # 1. "constant": lr = 1.0 (default perceptron)
+    # 2. "epoch_decay": lr = initial_lr * (decay_factor ** epoch)
+
+    schedule = "epoch_decay"
+    initial_lr = 1.0
+    # for epoch_decay
+    decay_factor = 0.9
+
     # Train for multiple epochs
     for epoch in range(num_epochs):
         # Randomly shuffle training examples each epoch
         random.shuffle(train_exs)
+
+        # Set learning rate based on schedule
+        if schedule == "constant":
+            lr = initial_lr
+        elif schedule == "epoch_decay":
+            lr = initial_lr * (decay_factor ** epoch)
 
         # Iterate through each training example
         for ex in train_exs:
@@ -339,7 +354,7 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
                 update_direction = 1 if y_true == 1 else -1
 
                 for feature_idx, feature_val in features.items():
-                    weights[feature_idx] += update_direction * feature_val
+                    weights[feature_idx] += lr * update_direction * feature_val
 
     return PerceptronClassifier(weights, feat_extractor)
 
