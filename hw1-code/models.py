@@ -311,11 +311,11 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
     # Training parameters
     num_epochs = 10
 
-    # Question 2: Schedule options:
+    # Learning rate schedule options:
     # 1. "constant": lr = 1.0 (default perceptron)
     # 2. "epoch_decay": lr = initial_lr * (decay_factor ** epoch)
 
-    schedule = "epoch_decay"
+    schedule = "constant"
     initial_lr = 1.0
     # for epoch_decay
     decay_factor = 0.9
@@ -356,7 +356,42 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
                 for feature_idx, feature_val in features.items():
                     weights[feature_idx] += lr * update_direction * feature_val
 
+    # Print top weighted words
+    print_top_weights(weights, feat_extractor.get_indexer())
+
     return PerceptronClassifier(weights, feat_extractor)
+
+
+def print_top_weights(weights, indexer, top_k=10):
+    """
+    Print the top-k words with highest positive weights and lowest negative weights.
+    :param weights: weight vector (numpy array)
+    :param indexer: Indexer mapping feature indices to feature names
+    :param top_k: number of top features to print
+    """
+    # Get all (index, weight) pairs
+    weight_pairs = [(i, weights[i]) for i in range(len(weights))]
+
+    # Sort by weight (descending for positive, ascending for negative)
+    weight_pairs_sorted = sorted(weight_pairs, key=lambda x: x[1], reverse=True)
+
+    print("\n" + "=" * 60)
+    print(f"TOP {top_k} WORDS WITH HIGHEST POSITIVE WEIGHTS:")
+    print("=" * 60)
+    for i in range(min(top_k, len(weight_pairs_sorted))):
+        idx, weight = weight_pairs_sorted[i]
+        feature = indexer.get_object(idx)
+        print(f"{i + 1}. {feature:30s} weight: {weight:10.4f}")
+
+    print("\n" + "=" * 60)
+    print(f"TOP {top_k} WORDS WITH LOWEST NEGATIVE WEIGHTS:")
+    print("=" * 60)
+    weight_pairs_sorted_neg = sorted(weight_pairs, key=lambda x: x[1])
+    for i in range(min(top_k, len(weight_pairs_sorted_neg))):
+        idx, weight = weight_pairs_sorted_neg[i]
+        feature = indexer.get_object(idx)
+        print(f"{i + 1}. {feature:30s} weight: {weight:10.4f}")
+    print("=" * 60 + "\n")
 
 
 def train_logistic_regression(train_exs: List[SentimentExample],
