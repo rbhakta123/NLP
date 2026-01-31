@@ -287,8 +287,29 @@ class LogisticRegressionClassifier(SentimentClassifier):
     modify the constructor to pass these in.
     """
 
-    def __init__(self):
-        raise Exception("Must be implemented")
+    def __init__(self, weights, feat_extractor):
+        self.weights = weights
+        self.feat_extractor = feat_extractor
+
+    def predict(self, sentence: List[str]) -> int:
+        """
+        Predict the sentiment of a sentence using logistic regression.
+        :param sentence: words in the sentence to classify
+        :return: 0 for negative, 1 for positive
+        """
+        # Extract features (add_to_indexer=False at test time)
+        features = self.feat_extractor.extract_features(sentence, add_to_indexer=False)
+
+        # Compute dot product of weights and features
+        score = 0.0
+        for feature_idx, feature_val in features.items():
+            score += self.weights[feature_idx] * feature_val
+
+        # Apply sigmoid function
+        prob = 1.0 / (1.0 + np.exp(-score))
+
+        # Return 1 if probability >= 0.5, else 0
+        return 1 if prob >= 0.5 else 0
 
 
 def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureExtractor) -> PerceptronClassifier:
@@ -402,7 +423,55 @@ def train_logistic_regression(train_exs: List[SentimentExample],
     :param feat_extractor: feature extractor to use
     :return: trained LogisticRegressionClassifier model
     """
-    raise Exception("Must be implemented")
+    # First pass: extract features from all training examples to build the indexer
+    for ex in train_exs:
+        feat_extractor.extract_features(ex.words, add_to_indexer=True)
+
+    # Initialize weight vector (numpy array)
+    num_features = len(feat_extractor.get_indexer())
+    weights = np.zeros(num_features)
+
+    # Training parameters
+    num_epochs = 10
+    learning_rate = 0.1
+
+    # Train for multiple epochs using stochastic gradient descent
+    for epoch in range(num_epochs):
+        # Shuffle training examples using numpy
+        indices = np.arange(len(train_exs))
+        np.random.shuffle(indices)
+        shuffled_exs = [train_exs[i] for i in indices]
+
+        # Iterate through each training example
+        for ex in shuffled_exs:
+            # Extract features
+            features = feat_extractor.extract_features(ex.words, add_to_indexer=False)
+
+            # Compute dot product (linear score)
+            score = 0.0
+            for feature_idx, feature_val in features.items():
+                score += weights[feature_idx] * feature_val
+
+            # Apply sigmoid function to get probability
+            # Use clipping to avoid overflow
+            if score > 20:
+                prob = 1.0
+            elif score < -20:
+                prob = 0.0
+            else:
+                prob = 1.0 / (1.0 + np.exp(-score))
+
+            # True label
+            y_true = ex.label
+
+            # Compute gradient: (predicted - true) * feature_value
+            error = prob - y_true
+
+            # Update weights using gradient descent
+            for feature_idx, feature_val in features.items():
+                weights[feature_idx] -= learning_rate * error * feature_val
+
+    return LogisticRegressionClassifier(weights, feat_extractor)
 
 
 def train_model(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample]) -> SentimentClassifier:
