@@ -85,6 +85,21 @@ if __name__ == '__main__':
     # Load train, dev, and test exs and index the words.
     train_exs = read_sentiment_examples(args.train_path)
     dev_exs = read_sentiment_examples(args.dev_path)
+    """
+    if args.model == "LR" and args.feats == "UNIGRAM":
+        step_sizes = [0.01, 0.1, 0.5]
+        num_epochs = 20
+
+        results = run_lr_experiments(
+            train_exs,
+            dev_exs,
+            step_sizes,
+            num_epochs
+        )
+
+        plot_training_curves(results)
+    """
+
     test_exs_words_only = read_blind_sst_examples(args.blind_test_path)
     print(repr(len(train_exs)) + " / " + repr(len(dev_exs)) + " / " + repr(len(test_exs_words_only)) + " train/dev/test examples")
 

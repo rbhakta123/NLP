@@ -509,3 +509,134 @@ def train_model(args, train_exs: List[SentimentExample], dev_exs: List[Sentiment
     else:
         raise Exception("Pass in TRIVIAL, PERCEPTRON, or LR to run the appropriate system")
     return model
+
+"""
+Plotting code
+
+import matplotlib.pyplot as plt
+
+
+def sigmoid(x):
+    if x > 20:
+        return 1.0
+    elif x < -20:
+        return 0.0
+    else:
+        return 1.0 / (1.0 + np.exp(-x))
+
+
+def compute_log_likelihood(examples, weights, feat_extractor):
+    ll = 0.0
+    for ex in examples:
+        features = feat_extractor.extract_features(ex.words, add_to_indexer=False)
+        score = sum(weights[i] * v for i, v in features.items())
+        prob = sigmoid(score)
+
+        if ex.label == 1:
+            ll += np.log(prob + 1e-12)
+        else:
+            ll += np.log(1.0 - prob + 1e-12)
+
+    return ll
+
+
+def compute_accuracy(examples, classifier):
+    correct = 0
+    for ex in examples:
+        if classifier.predict(ex.words) == ex.label:
+            correct += 1
+    return correct / len(examples)
+
+def train_logistic_regression_with_tracking(
+        train_exs,
+        dev_exs,
+        feat_extractor,
+        learning_rate=0.1,
+        num_epochs=20):
+
+
+    # Build feature index
+    for ex in train_exs:
+        feat_extractor.extract_features(ex.words, add_to_indexer=True)
+
+    num_features = len(feat_extractor.get_indexer())
+    weights = np.zeros(num_features)
+
+    train_ll_history = []
+    dev_acc_history = []
+
+    for epoch in range(num_epochs):
+        # Shuffle training examples
+        indices = np.arange(len(train_exs))
+        np.random.shuffle(indices)
+
+        for idx in indices:
+            ex = train_exs[idx]
+            features = feat_extractor.extract_features(ex.words, add_to_indexer=False)
+
+            score = sum(weights[i] * v for i, v in features.items())
+            prob = sigmoid(score)
+            error = prob - ex.label
+
+            for i, v in features.items():
+                weights[i] -= learning_rate * error * v
+
+        # Track metrics
+        train_ll = compute_log_likelihood(train_exs, weights, feat_extractor)
+        classifier = LogisticRegressionClassifier(weights, feat_extractor)
+        dev_acc = compute_accuracy(dev_exs, classifier)
+
+        train_ll_history.append(train_ll)
+        dev_acc_history.append(dev_acc)
+
+        print(f"Epoch {epoch+1:02d} | "
+              f"Log-Likelihood: {train_ll:.2f} | "
+              f"Dev Acc: {dev_acc:.4f}")
+
+    return train_ll_history, dev_acc_history
+
+
+def run_lr_experiments(train_exs, dev_exs, step_sizes, num_epochs=20):
+    results = {}
+
+    for lr in step_sizes:
+        print(f"\nTraining with learning rate = {lr}")
+        feat_extractor = UnigramFeatureExtractor(Indexer())
+
+        ll_hist, acc_hist = train_logistic_regression_with_tracking(
+            train_exs,
+            dev_exs,
+            feat_extractor,
+            learning_rate=lr,
+            num_epochs=num_epochs
+        )
+
+        results[lr] = (ll_hist, acc_hist)
+
+    return results
+
+
+def plot_training_curves(results):
+    epochs = range(1, len(next(iter(results.values()))[0]) + 1)
+
+    # Training log likelihood
+    plt.figure()
+    for lr, (ll_hist, _) in results.items():
+        plt.plot(epochs, ll_hist, label=f"lr={lr}")
+    plt.xlabel("Epoch")
+    plt.ylabel("Training Log Likelihood")
+    plt.title("Logistic Regression Training Objective (Unigrams)")
+    plt.legend()
+    plt.show()
+
+    # Development accuracy
+    plt.figure()
+    for lr, (_, acc_hist) in results.items():
+        plt.plot(epochs, acc_hist, label=f"lr={lr}")
+    plt.xlabel("Epoch")
+    plt.ylabel("Development Accuracy")
+    plt.title("Logistic Regression Dev Accuracy (Unigrams)")
+    plt.legend()
+    plt.show()
+
+"""
