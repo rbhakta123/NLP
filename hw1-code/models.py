@@ -106,125 +106,49 @@ class BigramFeatureExtractor(FeatureExtractor):
 
 class BetterFeatureExtractor(FeatureExtractor):
     """
-    Better feature extractor...try whatever you can think of!
+    Better feature extractor with negation handling.
+    Key idea: Words after negations have flipped sentiment (e.g., "not good" is negative).
     """
 
     def __init__(self, indexer: Indexer):
         self.indexer = indexer
-        # Define negation words
-        self.negation_words = {'not', 'no', 'never', 'neither', 'nobody', 'nothing',
-                               "n't", 'none', 'nor', 'nowhere', 'hardly', 'barely', 'scarcely'}
-        # Define punctuation indicators
-        self.punctuation = {'!', '?', '...'}
-
-        # Try to load stopwords, but don't fail if not available
-        try:
-            self.stopwords = set(stopwords.words('english'))
-        except:
-            self.stopwords = set()
+        # Common negation words
+        self.negation_words = {'not', 'no', 'never', "n't", 'neither', 'nor',
+                               'nobody', 'nothing', 'nowhere', 'hardly', 'barely'}
 
     def get_indexer(self):
         return self.indexer
 
     def extract_features(self, sentence: List[str], add_to_indexer: bool = False) -> dict:
         """
-        Extract enhanced features from the sentence.
-        Combines:
-        - Unigrams with lowercase normalization
-        - Bigrams
-        - Negation handling (mark words after negation)
-        - Punctuation features
-        - Sentence length features
-        - Optionally filters stopwords for some features
+        Extract unigram features with negation handling.
+        When we encounter a negation word, the next 3 words are marked as negated.
         """
         features = {}
+        negation_scope = 0  # Counts down when we're in negation scope
 
-        # Track if we're in negation scope
-        in_negation = False
-
-        for i, word in enumerate(sentence):
+        for word in sentence:
             word_lower = word.lower()
 
-            # === UNIGRAM FEATURES ===
-            unigram_key = f"UNI={word_lower}"
-            feature_idx = self.indexer.add_and_get_index(unigram_key, add=add_to_indexer)
+            # Regular unigram feature
+            feature_key = word_lower
+
+            # If we're in negation scope, prefix the word
+            if negation_scope > 0:
+                feature_key = f"NOT_{word_lower}"
+                negation_scope -= 1
+
+            # Check if this word is a negation word
+            if word_lower in self.negation_words or word_lower.endswith("n't"):
+                negation_scope = 3  # Next 3 words are negated
+
+            # Add the feature
+            feature_idx = self.indexer.add_and_get_index(feature_key, add=add_to_indexer)
             if feature_idx != -1:
                 if feature_idx in features:
                     features[feature_idx] += 1
                 else:
                     features[feature_idx] = 1
-
-            # === NEGATION HANDLING ===
-            # Check if current word is a negation word
-            if word_lower in self.negation_words:
-                in_negation = True
-
-            # If in negation scope, add negated version of word
-            if in_negation and word_lower not in self.negation_words:
-                neg_key = f"NEG={word_lower}"
-                feature_idx = self.indexer.add_and_get_index(neg_key, add=add_to_indexer)
-                if feature_idx != -1:
-                    if feature_idx in features:
-                        features[feature_idx] += 1
-                    else:
-                        features[feature_idx] = 1
-
-            # Reset negation after punctuation or after a few words
-            if word in {'.', ',', ';', '!', '?'} or i > 0 and i % 5 == 0:
-                in_negation = False
-
-            # === BIGRAM FEATURES ===
-            if i < len(sentence) - 1:
-                next_word = sentence[i + 1].lower()
-                bigram_key = f"BI={word_lower}_{next_word}"
-                feature_idx = self.indexer.add_and_get_index(bigram_key, add=add_to_indexer)
-                if feature_idx != -1:
-                    if feature_idx in features:
-                        features[feature_idx] += 1
-                    else:
-                        features[feature_idx] = 1
-
-            # === PUNCTUATION FEATURES ===
-            if word in self.punctuation:
-                punct_key = f"PUNCT={word}"
-                feature_idx = self.indexer.add_and_get_index(punct_key, add=add_to_indexer)
-                if feature_idx != -1:
-                    if feature_idx in features:
-                        features[feature_idx] += 1
-                    else:
-                        features[feature_idx] = 1
-
-            # === POSITION FEATURES ===
-            # First and last words often carry sentiment
-            if i == 0:
-                first_key = f"FIRST={word_lower}"
-                feature_idx = self.indexer.add_and_get_index(first_key, add=add_to_indexer)
-                if feature_idx != -1:
-                    features[feature_idx] = 1
-            if i == len(sentence) - 1:
-                last_key = f"LAST={word_lower}"
-                feature_idx = self.indexer.add_and_get_index(last_key, add=add_to_indexer)
-                if feature_idx != -1:
-                    features[feature_idx] = 1
-
-        # === LENGTH FEATURES ===
-        # Bin sentence length
-        length = len(sentence)
-        if length < 5:
-            length_bin = "very_short"
-        elif length < 10:
-            length_bin = "short"
-        elif length < 20:
-            length_bin = "medium"
-        elif length < 30:
-            length_bin = "long"
-        else:
-            length_bin = "very_long"
-
-        length_key = f"LEN={length_bin}"
-        feature_idx = self.indexer.add_and_get_index(length_key, add=add_to_indexer)
-        if feature_idx != -1:
-            features[feature_idx] = 1
 
         return features
 
@@ -509,6 +433,7 @@ def train_model(args, train_exs: List[SentimentExample], dev_exs: List[Sentiment
     else:
         raise Exception("Pass in TRIVIAL, PERCEPTRON, or LR to run the appropriate system")
     return model
+
 
 """
 Plotting code
