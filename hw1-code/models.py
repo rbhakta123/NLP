@@ -43,19 +43,16 @@ class UnigramFeatureExtractor(FeatureExtractor):
 
     def extract_features(self, sentence: List[str], add_to_indexer: bool = False) -> dict:
         """
-        Extract unigram features from the sentence.
-        Uses lowercase normalization and counts word occurrences.
+        Extract unigram features from the sentence. lowercases all words and counts occurences
         """
         features = {}
 
         for word in sentence:
-            # Lowercase normalization
+            # lowercase all words
             word_lower = word.lower()
 
             # Get or add feature index
             feature_idx = self.indexer.add_and_get_index(word_lower, add=add_to_indexer)
-
-            # Only add feature if it's in the indexer (at test time, unseen features return -1)
             if feature_idx != -1:
                 if feature_idx in features:
                     features[feature_idx] += 1
@@ -63,7 +60,6 @@ class UnigramFeatureExtractor(FeatureExtractor):
                     features[feature_idx] = 1
 
         return features
-
 
 class BigramFeatureExtractor(FeatureExtractor):
     """
@@ -78,8 +74,7 @@ class BigramFeatureExtractor(FeatureExtractor):
 
     def extract_features(self, sentence: List[str], add_to_indexer: bool = False) -> dict:
         """
-        Extract bigram features from the sentence.
-        Uses consecutive word pairs with lowercase normalization.
+        Extract bigram features from the sentence. Uses consecutive word pairs with all words lowercased.
         """
         features = {}
 
@@ -88,13 +83,11 @@ class BigramFeatureExtractor(FeatureExtractor):
             word1 = sentence[i].lower()
             word2 = sentence[i + 1].lower()
 
-            # Create bigram feature string
+            # make word string
             bigram = f"{word1}_{word2}"
 
             # Get or add feature index
             feature_idx = self.indexer.add_and_get_index(bigram, add=add_to_indexer)
-
-            # Only add feature if it's in the indexer
             if feature_idx != -1:
                 if feature_idx in features:
                     features[feature_idx] += 1
@@ -103,16 +96,15 @@ class BigramFeatureExtractor(FeatureExtractor):
 
         return features
 
-
 class BetterFeatureExtractor(FeatureExtractor):
     """
-    Better feature extractor with negation handling.
-    Key idea: Words after negations have flipped sentiment (e.g., "not good" is negative).
+    Better feature extractor, with negation handling. Words after negations have flipped sentiment (e.g., "not good"
+    is negative and "not bad" is positive).
     """
 
     def __init__(self, indexer: Indexer):
         self.indexer = indexer
-        # Common negation words
+        # some commonly used negation words, taken from Cambridge Dictionary
         self.negation_words = {'not', 'no', 'never', "n't", 'neither', 'nor',
                                'nobody', 'nothing', 'nowhere', 'hardly', 'barely'}
 
@@ -121,16 +113,15 @@ class BetterFeatureExtractor(FeatureExtractor):
 
     def extract_features(self, sentence: List[str], add_to_indexer: bool = False) -> dict:
         """
-        Extract unigram features with negation handling.
-        When we encounter a negation word, the next 3 words are marked as negated.
+        Extract unigram features with negation handling. When we encounter a negation word, the next 3 words are
+         marked as negated.
         """
         features = {}
-        negation_scope = 0  # Counts down when we're in negation scope
+        negation_scope = 0
 
         for word in sentence:
             word_lower = word.lower()
 
-            # Regular unigram feature
             feature_key = word_lower
 
             # If we're in negation scope, prefix the word
@@ -188,11 +179,9 @@ class PerceptronClassifier(SentimentClassifier):
 
     def predict(self, sentence: List[str]) -> int:
         """
-        Predict the sentiment of a sentence.
-        :param sentence: words in the sentence to classify
-        :return: 0 for negative, 1 for positive
+        Predict the sentiment of a sentence. Returns 0 for negative, 1 for positive
         """
-        # Extract features (add_to_indexer=False at test time)
+        # Extract features
         features = self.feat_extractor.extract_features(sentence, add_to_indexer=False)
 
         # Compute dot product of weights and features
@@ -217,11 +206,9 @@ class LogisticRegressionClassifier(SentimentClassifier):
 
     def predict(self, sentence: List[str]) -> int:
         """
-        Predict the sentiment of a sentence using logistic regression.
-        :param sentence: words in the sentence to classify
-        :return: 0 for negative, 1 for positive
+        Predict the sentiment of a sentence using logistic regression. Returns 0 for negative, 1 for positive
         """
-        # Extract features (add_to_indexer=False at test time)
+        # Extract features
         features = self.feat_extractor.extract_features(sentence, add_to_indexer=False)
 
         # Compute dot product of weights and features
@@ -256,8 +243,8 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
     # Training parameters
     num_epochs = 10
 
-    # Learning rate schedule options:
-    # 1. "constant": lr = 1.0 (default perceptron)
+    # Learning rate schedule options for Question 2:
+    # 1. "constant": lr = 1.0
     # 2. "epoch_decay": lr = initial_lr * (decay_factor ** epoch)
 
     schedule = "constant"
@@ -320,23 +307,20 @@ def print_top_weights(weights, indexer, top_k=10):
     # Sort by weight (descending for positive, ascending for negative)
     weight_pairs_sorted = sorted(weight_pairs, key=lambda x: x[1], reverse=True)
 
-    print("\n" + "=" * 60)
+    print("\n")
     print(f"TOP {top_k} WORDS WITH HIGHEST POSITIVE WEIGHTS:")
-    print("=" * 60)
     for i in range(min(top_k, len(weight_pairs_sorted))):
         idx, weight = weight_pairs_sorted[i]
         feature = indexer.get_object(idx)
         print(f"{i + 1}. {feature:30s} weight: {weight:10.4f}")
 
-    print("\n" + "=" * 60)
     print(f"TOP {top_k} WORDS WITH LOWEST NEGATIVE WEIGHTS:")
-    print("=" * 60)
     weight_pairs_sorted_neg = sorted(weight_pairs, key=lambda x: x[1])
     for i in range(min(top_k, len(weight_pairs_sorted_neg))):
         idx, weight = weight_pairs_sorted_neg[i]
         feature = indexer.get_object(idx)
         print(f"{i + 1}. {feature:30s} weight: {weight:10.4f}")
-    print("=" * 60 + "\n")
+
 
 
 def train_logistic_regression(train_exs: List[SentimentExample],
@@ -436,7 +420,7 @@ def train_model(args, train_exs: List[SentimentExample], dev_exs: List[Sentiment
 
 
 """
-Plotting code
+Plotting code- commented out to avoid crashing due to matplotlib import
 
 import matplotlib.pyplot as plt
 
