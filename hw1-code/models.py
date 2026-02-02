@@ -6,6 +6,7 @@ from utils import *
 import numpy as np
 import nltk
 from nltk.corpus import stopwords
+import random
 
 
 class FeatureExtractor(object):
@@ -96,6 +97,7 @@ class BigramFeatureExtractor(FeatureExtractor):
 
         return features
 
+
 class BetterFeatureExtractor(FeatureExtractor):
     """
     Better feature extractor, with negation handling. Words after negations have flipped sentiment (e.g., "not good"
@@ -143,12 +145,10 @@ class BetterFeatureExtractor(FeatureExtractor):
 
         return features
 
-
 class SentimentClassifier(object):
     """
     Sentiment classifier base type
     """
-
     def predict(self, sentence: List[str]) -> int:
         """
         :param sentence: words (List[str]) in the sentence to classify
@@ -156,15 +156,12 @@ class SentimentClassifier(object):
         """
         raise Exception("Don't call me, call my subclasses")
 
-
 class TrivialSentimentClassifier(SentimentClassifier):
     """
     Sentiment classifier that always predicts the positive class.
     """
-
     def predict(self, sentence: List[str]) -> int:
         return 1
-
 
 class PerceptronClassifier(SentimentClassifier):
     """
@@ -172,7 +169,6 @@ class PerceptronClassifier(SentimentClassifier):
     superclass. Hint: you'll probably need this class to wrap both the weight vector and featurizer -- feel free to
     modify the constructor to pass these in.
     """
-
     def __init__(self, weights, feat_extractor):
         self.weights = weights
         self.feat_extractor = feat_extractor
@@ -192,14 +188,12 @@ class PerceptronClassifier(SentimentClassifier):
         # Return 1 if score >= 0, else 0
         return 1 if score >= 0 else 0
 
-
 class LogisticRegressionClassifier(SentimentClassifier):
     """
     Implement this class -- you should at least have init() and implement the predict method from the SentimentClassifier
     superclass. Hint: you'll probably need this class to wrap both the weight vector and featurizer -- feel free to
     modify the constructor to pass these in.
     """
-
     def __init__(self, weights, feat_extractor):
         self.weights = weights
         self.feat_extractor = feat_extractor
@@ -222,7 +216,6 @@ class LogisticRegressionClassifier(SentimentClassifier):
         # Return 1 if probability >= 0.5, else 0
         return 1 if prob >= 0.5 else 0
 
-
 def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureExtractor) -> PerceptronClassifier:
     """
     Train a classifier with the perceptron.
@@ -230,8 +223,6 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
     :param feat_extractor: feature extractor to use
     :return: trained PerceptronClassifier model
     """
-    import random
-
     # First pass: extract features from all training examples to build the indexer
     for ex in train_exs:
         feat_extractor.extract_features(ex.words, add_to_indexer=True)
@@ -288,18 +279,14 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
                 for feature_idx, feature_val in features.items():
                     weights[feature_idx] += lr * update_direction * feature_val
 
-    # Print top weighted words
-    print_top_weights(weights, feat_extractor.get_indexer())
+    # Print top weighted words- Q2
+    # print_top_weights(weights, feat_extractor.get_indexer())
 
     return PerceptronClassifier(weights, feat_extractor)
 
-
 def print_top_weights(weights, indexer, top_k=10):
     """
-    Print the top-k words with highest positive weights and lowest negative weights.
-    :param weights: weight vector (numpy array)
-    :param indexer: Indexer mapping feature indices to feature names
-    :param top_k: number of top features to print
+    Answers Question 2- Print the top-k words with highest positive weights and lowest negative weights.
     """
     # Get all (index, weight) pairs
     weight_pairs = [(i, weights[i]) for i in range(len(weights))]
@@ -321,8 +308,6 @@ def print_top_weights(weights, indexer, top_k=10):
         feature = indexer.get_object(idx)
         print(f"{i + 1}. {feature:30s} weight: {weight:10.4f}")
 
-
-
 def train_logistic_regression(train_exs: List[SentimentExample],
                               feat_extractor: FeatureExtractor) -> LogisticRegressionClassifier:
     """
@@ -335,7 +320,7 @@ def train_logistic_regression(train_exs: List[SentimentExample],
     for ex in train_exs:
         feat_extractor.extract_features(ex.words, add_to_indexer=True)
 
-    # Initialize weight vector (numpy array)
+    # Initialize weight vector
     num_features = len(feat_extractor.get_indexer())
     weights = np.zeros(num_features)
 
@@ -360,8 +345,7 @@ def train_logistic_regression(train_exs: List[SentimentExample],
             for feature_idx, feature_val in features.items():
                 score += weights[feature_idx] * feature_val
 
-            # Apply sigmoid function to get probability
-            # Use clipping to avoid overflow
+            # Apply sigmoid function
             if score > 20:
                 prob = 1.0
             elif score < -20:
@@ -371,16 +355,13 @@ def train_logistic_regression(train_exs: List[SentimentExample],
 
             # True label
             y_true = ex.label
-
-            # Compute gradient: (predicted - true) * feature_value
+            # Compute gradient
             error = prob - y_true
-
             # Update weights using gradient descent
             for feature_idx, feature_val in features.items():
                 weights[feature_idx] -= learning_rate * error * feature_val
 
     return LogisticRegressionClassifier(weights, feat_extractor)
-
 
 def train_model(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample]) -> SentimentClassifier:
     """
@@ -392,6 +373,30 @@ def train_model(args, train_exs: List[SentimentExample], dev_exs: List[Sentiment
     process, but you should *not* directly train on this data.
     :return: trained SentimentClassifier model, of whichever type is specified
     """
+    # Download stopwords
+    try:
+        stop_words = set(stopwords.words('english'))
+    except LookupError:
+        nltk.download('stopwords')
+        stop_words = set(stopwords.words('english'))
+
+    # Function to filter stopwords
+    def filter_stopwords(examples: List[SentimentExample]) -> List[SentimentExample]:
+        """
+        Remove stopwords from all examples while preserving the SentimentExample structure.
+        """
+        filtered_examples = []
+        for ex in examples:
+            # Filter out stopwords (case-insensitive comparison)
+            filtered_words = [word for word in ex.words if word.lower() not in stop_words]
+            # Create new SentimentExample with filtered words
+            filtered_ex = SentimentExample(filtered_words, ex.label)
+            filtered_examples.append(filtered_ex)
+        return filtered_examples
+
+    # Apply stopword filtering to training set
+    train_exs_filtered = filter_stopwords(train_exs)
+
     # Initialize feature extractor
     if args.model == "TRIVIAL":
         feat_extractor = None
@@ -407,13 +412,13 @@ def train_model(args, train_exs: List[SentimentExample], dev_exs: List[Sentiment
     else:
         raise Exception("Pass in UNIGRAM, BIGRAM, or BETTER to run the appropriate system")
 
-    # Train the model
+    # Train the model using filtered examples
     if args.model == "TRIVIAL":
         model = TrivialSentimentClassifier()
     elif args.model == "PERCEPTRON":
-        model = train_perceptron(train_exs, feat_extractor)
+        model = train_perceptron(train_exs_filtered, feat_extractor)
     elif args.model == "LR":
-        model = train_logistic_regression(train_exs, feat_extractor)
+        model = train_logistic_regression(train_exs_filtered, feat_extractor)
     else:
         raise Exception("Pass in TRIVIAL, PERCEPTRON, or LR to run the appropriate system")
     return model
