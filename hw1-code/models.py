@@ -44,7 +44,7 @@ class UnigramFeatureExtractor(FeatureExtractor):
 
     def extract_features(self, sentence: List[str], add_to_indexer: bool = False) -> dict:
         """
-        Extract unigram features from the sentence. lowercases all words and counts occurences
+        Extract unigram features from the sentence. Lowercases all words and counts occurences
         """
         features = {}
 
@@ -96,7 +96,6 @@ class BigramFeatureExtractor(FeatureExtractor):
                     features[feature_idx] = 1
 
         return features
-
 
 class BetterFeatureExtractor(FeatureExtractor):
     """
@@ -205,12 +204,10 @@ class LogisticRegressionClassifier(SentimentClassifier):
         # Extract features
         features = self.feat_extractor.extract_features(sentence, add_to_indexer=False)
 
-        # Compute dot product of weights and features
+        # Compute dot product of weights and features, and apply sigmoid
         score = 0.0
         for feature_idx, feature_val in features.items():
             score += self.weights[feature_idx] * feature_val
-
-        # Apply sigmoid function
         prob = 1.0 / (1.0 + np.exp(-score))
 
         # Return 1 if probability >= 0.5, else 0
@@ -223,54 +220,47 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
     :param feat_extractor: feature extractor to use
     :return: trained PerceptronClassifier model
     """
-    # First pass: extract features from all training examples to build the indexer
+    # Extract features from all training examples to build the indexer
     for ex in train_exs:
         feat_extractor.extract_features(ex.words, add_to_indexer=True)
 
-    # Initialize weight vector (numpy array)
+    # Initialize weight vector
     num_features = len(feat_extractor.get_indexer())
     weights = np.zeros(num_features)
-
-    # Training parameters
-    num_epochs = 10
 
     # Learning rate schedule options for Question 2:
     # 1. "constant": lr = 1.0
     # 2. "epoch_decay": lr = initial_lr * (decay_factor ** epoch)
 
+    # training params
     schedule = "constant"
     initial_lr = 1.0
     # for epoch_decay
     decay_factor = 0.9
+    num_epochs = 10
 
-    # Train for multiple epochs
     for epoch in range(num_epochs):
         # Randomly shuffle training examples each epoch
         random.shuffle(train_exs)
 
-        # Set learning rate based on schedule
         if schedule == "constant":
             lr = initial_lr
         elif schedule == "epoch_decay":
             lr = initial_lr * (decay_factor ** epoch)
 
-        # Iterate through each training example
         for ex in train_exs:
             # Extract features
             features = feat_extractor.extract_features(ex.words, add_to_indexer=False)
-
-            # Compute prediction (dot product)
+            # Compute prediction
             score = 0.0
             for feature_idx, feature_val in features.items():
                 score += weights[feature_idx] * feature_val
-
             # Predicted label
             y_pred = 1 if score >= 0 else 0
-
             # True label
             y_true = ex.label
 
-            # Perceptron update: if prediction is wrong, update weights
+            # If prediction is wrong, update weights
             if y_pred != y_true:
                 # If true label is 1 but predicted 0, add features to weights
                 # If true label is 0 but predicted 1, subtract features from weights
@@ -279,7 +269,7 @@ def train_perceptron(train_exs: List[SentimentExample], feat_extractor: FeatureE
                 for feature_idx, feature_val in features.items():
                     weights[feature_idx] += lr * update_direction * feature_val
 
-    # Print top weighted words- Q2
+    # Print top weighted words- for Q2
     # print_top_weights(weights, feat_extractor.get_indexer())
 
     return PerceptronClassifier(weights, feat_extractor)
@@ -316,7 +306,7 @@ def train_logistic_regression(train_exs: List[SentimentExample],
     :param feat_extractor: feature extractor to use
     :return: trained LogisticRegressionClassifier model
     """
-    # First pass: extract features from all training examples to build the indexer
+    # Extract features from all training examples to build the indexer
     for ex in train_exs:
         feat_extractor.extract_features(ex.words, add_to_indexer=True)
 
@@ -324,11 +314,10 @@ def train_logistic_regression(train_exs: List[SentimentExample],
     num_features = len(feat_extractor.get_indexer())
     weights = np.zeros(num_features)
 
-    # Training parameters
+    # Training params
     num_epochs = 10
     learning_rate = 0.1
 
-    # Train for multiple epochs using stochastic gradient descent
     for epoch in range(num_epochs):
         # Shuffle training examples using numpy
         indices = np.arange(len(train_exs))
@@ -340,7 +329,7 @@ def train_logistic_regression(train_exs: List[SentimentExample],
             # Extract features
             features = feat_extractor.extract_features(ex.words, add_to_indexer=False)
 
-            # Compute dot product (linear score)
+            # Compute dot product
             score = 0.0
             for feature_idx, feature_val in features.items():
                 score += weights[feature_idx] * feature_val
@@ -387,7 +376,7 @@ def train_model(args, train_exs: List[SentimentExample], dev_exs: List[Sentiment
         """
         filtered_examples = []
         for ex in examples:
-            # Filter out stopwords (case-insensitive comparison)
+            # Filter out stopwords
             filtered_words = [word for word in ex.words if word.lower() not in stop_words]
             # Create new SentimentExample with filtered words
             filtered_ex = SentimentExample(filtered_words, ex.label)
