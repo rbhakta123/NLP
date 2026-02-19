@@ -1,0 +1,7 @@
+.vscode/settings.json
+data/dev-typo.txt
+data/dev.txt
+data/glove.6B.300d-relativized.txt
+data/glove.6B.50d-relativized.txt
+data/test-blind.txt
+data/train.txt
