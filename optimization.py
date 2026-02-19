@@ -41,7 +41,7 @@ def quadratic_grad(x1, x2):
     :param x2: second coordinate
     :return: a one-dimensional numpy array containing two elements representing the gradient
     """
-    raise Exception("Implement me!")
+    raise Exception("Implement mee!")
 
 
 def sgd_test_quadratic(args):
