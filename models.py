@@ -6,7 +6,9 @@ from torch import optim
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import random
-from typing import List
+from collections import defaultdict
+from nltk.metrics.distance import edit_distance
+from typing import List, Dict, Optional
 from sentiment_data import *
 
 class SentimentClassifier(object):
@@ -19,6 +21,55 @@ class SentimentClassifier(object):
 class TrivialSentimentClassifier(SentimentClassifier):
     def predict(self, ex_words: List[str], has_typos: bool) -> int:
         return 1
+
+class SpellingCorrector:
+    """
+    Fast spelling corrector using a prefix index.
+    Since typos never occur in the first 3 characters, we only need to search
+    vocabulary words that share the same 3-character prefix as the unknown word.
+    This reduces edit distance calls from O(|V|) to O(small bucket).
+    """
+    def __init__(self, word_indexer, min_word_len: int = 4):
+        self.word_indexer = word_indexer
+        self.min_word_len = min_word_len
+        self.cache: Dict[str, str] = {}
+
+        # Build prefix index: first 3 chars -> list of vocab words
+        self.prefix_index: Dict[str, List[str]] = defaultdict(list)
+        for i in range(len(word_indexer)):
+            word = word_indexer.get_object(i)
+            if word and len(word) >= 3 and word not in ("PAD", "UNK"):
+                self.prefix_index[word[:3]].append(word)
+
+    def correct(self, word: str) -> Optional[str]:
+        """
+        Returns the best spelling correction for an OOV word, or None if no
+        good candidate is found. Only attempts correction on words long enough
+        to plausibly have a typo.
+        """
+        if len(word) < self.min_word_len:
+            return None
+        if word in self.cache:
+            return self.cache[word]
+
+        prefix = word[:3]
+        candidates = self.prefix_index.get(prefix, [])
+        if not candidates:
+            return None
+
+        best_word = None
+        best_dist = 3  # only accept corrections within edit distance 2
+        for candidate in candidates:
+            # Quick length filter before computing edit distance
+            if abs(len(candidate) - len(word)) > 2:
+                continue
+            dist = edit_distance(word, candidate)
+            if dist < best_dist:
+                best_dist = dist
+                best_word = candidate
+
+        self.cache[word] = best_word
+        return best_word
 
 class DANNetwork(nn.Module):
     def __init__(self, word_embeddings: WordEmbeddings,
@@ -45,7 +96,6 @@ class DANNetwork(nn.Module):
         layers.append(nn.LogSoftmax(dim=-1))
         self.network = nn.Sequential(*layers)
 
-        # Xavier initialization
         for layer in self.network:
             if isinstance(layer, nn.Linear):
                 nn.init.xavier_uniform_(layer.weight)
@@ -57,23 +107,33 @@ class DANNetwork(nn.Module):
         masked_embeds = embeds * mask
         summed = masked_embeds.sum(dim=1)
         lengths = mask.sum(dim=1).clamp(min=1)
-        avg_embeds = summed / lengths               # (batch, embed_dim)
+        avg_embeds = summed / lengths            
         return self.network(avg_embeds)
-
+    
 class NeuralSentimentClassifier(SentimentClassifier):
-    def __init__(self, model: DANNetwork, word_indexer):
+    def __init__(self, model: DANNetwork, word_indexer, spelling_corrector: SpellingCorrector = None):
         self.model = model
         self.word_indexer = word_indexer
+        self.spelling_corrector = spelling_corrector
         self.model.eval()
 
-    def _words_to_indices(self, words: List[str], max_len: int = 50) -> torch.Tensor:
+    def _lookup_word(self, word: str, has_typos: bool) -> int:
+        """Look up a word index, optionally attempting spelling correction for OOV words."""
+        idx = self.word_indexer.index_of(word)
+        if idx != -1:
+            return idx
+        # Word is OOV — try spelling correction if in typo mode
+        if has_typos and self.spelling_corrector is not None:
+            corrected = self.spelling_corrector.correct(word)
+            if corrected is not None:
+                idx = self.word_indexer.index_of(corrected)
+                if idx != -1:
+                    return idx
+        return self.word_indexer.index_of("UNK")
+
+    def _words_to_indices(self, words: List[str], has_typos: bool, max_len: int = 50) -> torch.Tensor:
         words = words[:max_len]
-        indices = []
-        for w in words:
-            idx = self.word_indexer.index_of(w)
-            if idx == -1:
-                idx = self.word_indexer.index_of("UNK")
-            indices.append(idx)
+        indices = [self._lookup_word(w, has_typos) for w in words]
         if not indices:
             indices = [self.word_indexer.index_of("UNK")]
         return torch.tensor(indices, dtype=torch.long)
@@ -81,13 +141,13 @@ class NeuralSentimentClassifier(SentimentClassifier):
     def predict(self, ex_words: List[str], has_typos: bool) -> int:
         device = next(self.model.parameters()).device
         with torch.no_grad():
-            indices = self._words_to_indices(ex_words).unsqueeze(0).to(device)
+            indices = self._words_to_indices(ex_words, has_typos).unsqueeze(0).to(device)
             log_probs = self.model(indices)
             return int(torch.argmax(log_probs, dim=1).item())
 
     def predict_all(self, all_ex_words: List[List[str]], has_typos: bool) -> List[int]:
         device = next(self.model.parameters()).device
-        sequences = [self._words_to_indices(words) for words in all_ex_words]
+        sequences = [self._words_to_indices(words, has_typos) for words in all_ex_words]
         padded = pad_sequence(sequences, batch_first=True, padding_value=0).to(device)
         with torch.no_grad():
             log_probs = self.model(padded)
@@ -107,7 +167,6 @@ def train_deep_averaging_network(args,
 
     hidden_size = args.hidden_size
     num_epochs = args.num_epochs
-
     lr = LR
     batch_size = BATCH_SIZE
 
@@ -161,4 +220,7 @@ def train_deep_averaging_network(args,
         avg_loss = total_loss / len(train_loader)
         print(f"Epoch {epoch+1}/{num_epochs} — avg loss: {avg_loss:.4f}")
 
-    return NeuralSentimentClassifier(model, word_indexer)
+    # Build spelling corrector only when needed for typo setting
+    spelling_corrector = SpellingCorrector(word_indexer) if train_model_for_typo_setting else None
+
+    return NeuralSentimentClassifier(model, word_indexer, spelling_corrector)
